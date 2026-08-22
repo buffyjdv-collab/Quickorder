@@ -24,7 +24,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { signOut } from 'next-auth/react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 
 // ─── Types ────────────────────────────────────────────────────────────
 type Section = 'overview' | 'orders' | 'menu' | 'qr' | 'revenue';
@@ -592,9 +592,71 @@ function RevenueSection() {
 // ─── Main Page ────────────────────────────────────────────────────────
 type AnalyticsResponse = Analytics & { tableCount: number; productCount: number; lowStock: any[]; avgPrepTime: number };
 
+function handleLogout() {
+  signOut({ redirect: false }).then(() => { window.location.href = '/'; });
+}
+
+// ─── Login Screen ─────────────────────────────────────────────────
+function LoginScreen() {
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    const res = await signIn('credentials', { email, password, redirect: false });
+    setLoading(false);
+    if (res?.error) setError('Invalid email or password');
+  };
+
+  return (
+    <div className='min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-4'>
+      <Card className='w-full max-w-sm shadow-xl border-0'>
+        <CardHeader className='text-center pb-2'>
+          <div className='mx-auto flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-3xl shadow-lg mb-3'>🍽️</div>
+          <CardTitle className='text-xl font-bold'>QuickOrder</CardTitle>
+          <CardDescription>Sign in to your restaurant dashboard</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit} className='space-y-4'>
+            <div className='space-y-2'>
+              <label className='text-sm font-medium'>Email</label>
+              <Input type='email' placeholder='admin@quickorder.in' value={email} onChange={e => setEmail(e.target.value)} required />
+            </div>
+            <div className='space-y-2'>
+              <label className='text-sm font-medium'>Password</label>
+              <Input type='password' placeholder='••••••••' value={password} onChange={e => setPassword(e.target.value)} required />
+            </div>
+            {error && <p className='text-sm text-red-600 text-center'>{error}</p>}
+            <Button type='submit' className='w-full bg-emerald-600 hover:bg-emerald-700' disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign In'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────
 export default function Home() {
+  const { data: session, status } = useSession();
   const [section, setSection] = React.useState<Section>('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+
+  if (status === 'loading') return (
+    <div className='min-h-screen flex items-center justify-center bg-muted/30'>
+      <div className='text-center space-y-3'>
+        <div className='mx-auto size-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600' />
+        <p className='text-sm text-muted-foreground'>Loading...</p>
+      </div>
+    </div>
+  );
+
+  if (!session) return <LoginScreen />;
 
   const { data: business } = useFetch<Business>('/api/business');
   const { data: orders } = useFetch<Order[]>('/api/orders?limit=200', { interval: 15000 });
@@ -623,7 +685,7 @@ export default function Home() {
         ) : <Skeleton className='size-9 rounded-xl' />}
         <div className='flex items-center gap-2'>
           {activeOrders > 0 && <Badge className='bg-emerald-100 text-emerald-700 tabular-nums hidden sm:flex'>{activeOrders} active</Badge>}
-          <Button variant='ghost' size='sm' className='h-8 gap-1.5 text-muted-foreground hover:text-red-600' onClick={() => signOut({ callbackUrl: '/' })}>
+          <Button variant='ghost' size='sm' className='h-8 gap-1.5 text-muted-foreground hover:text-red-600' onClick={handleLogout}>
             <LogOut className='size-4' /><span className='hidden sm:inline text-xs'>Logout</span>
           </Button>
         </div>
@@ -646,7 +708,7 @@ export default function Home() {
           })}
           <div className='mt-auto pt-4'>
             <Separator className='mb-2' />
-            <button onClick={() => signOut({ callbackUrl: '/' })}
+            <button onClick={handleLogout}
               className='flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600'>
               <LogOut className='size-4' />Logout
             </button>
@@ -675,7 +737,7 @@ export default function Home() {
                     </button>);
                 })}
                 <Separator className='my-2' />
-                <button onClick={() => signOut({ callbackUrl: '/' })}
+                <button onClick={handleLogout}
                   className='flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50'>
                   <LogOut className='size-5' />Logout
                 </button>

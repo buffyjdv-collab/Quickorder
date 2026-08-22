@@ -1,7 +1,7 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "./db";
-import bcrypt from "bcryptjs";
+import { compare } from "bcryptjs";
 import type { SessionUser } from "./types";
 
 export const authOptions: NextAuthOptions = {
@@ -13,7 +13,7 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) return null;
         const user = await db.user.findUnique({ where: { email: credentials.email } });
         if (!user || !user.active) return null;
-        const valid = await bcrypt.compare(credentials.password, user.passwordHash);
+        const valid = await compare(credentials.password, user.passwordHash);
         if (!valid) return null;
         return { id: user.id, email: user.email, name: user.name, role: user.role, businessId: user.businessId };
       },

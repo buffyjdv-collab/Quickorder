@@ -1,0 +1,150 @@
+// QuickOrder - QR Code Ordering System
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Business {
+  id             String   @id @default("biz_1")
+  name           String
+  type           String   @default("restaurant")
+  tagline        String?
+  description    String?
+  logoEmoji      String   @default("🍽️")
+  coverColor     String   @default("emerald")
+  phone          String?
+  address        String?
+  upiId          String?
+  currency       String   @default("₹")
+  taxRate        Float    @default(5.0)
+  serviceFee     Float    @default(0.0)
+  openHours      String?
+  rating         Float    @default(4.7)
+  enabled        Boolean  @default(true)
+  platformFeeRate Float   @default(2.0)
+  defaulter      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  users          User[]
+  tables         Table[]
+  billingCycles  BillingCycle[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("STAFF")
+  businessId   String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  business     Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Table {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  code       String   @unique
+  zone       String?
+  capacity   Int      @default(4)
+  active     Boolean  @default(true)
+  scans      Int      @default(0)
+  createdAt  DateTime @default(now())
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Category {
+  id         String    @id @default(cuid())
+  businessId String    @default("biz_1")
+  name       String
+  emoji      String?
+  sortOrder  Int       @default(0)
+  products   Product[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  businessId  String   @default("biz_1")
+  categoryId  String
+  name        String
+  description String?
+  price       Float
+  emoji       String   @default("🍽️")
+  image       String?
+  imageColor  String   @default("emerald")
+  available   Boolean  @default(true)
+  trackStock  Boolean  @default(false)
+  stockQty    Int      @default(0)
+  variants    String?
+  addOns      String?
+  tags        String?
+  prepTime    Int      @default(15)
+  rating      Float    @default(4.5)
+  popular     Boolean  @default(false)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime @default(now())
+  category    Category @relation(fields: [categoryId], references: [id])
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  businessId    String      @default("biz_1")
+  tableId       String?
+  tableCode     String?
+  orderNumber   Int
+  customerName  String?
+  customerPhone String?
+  status        String      @default("received")
+  paymentMethod String      @default("cash")
+  paymentStatus String      @default("pending")
+  subtotal      Float
+  tax           Float
+  serviceFee    Float
+  total         Float
+  notes         String?
+  itemCount     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  items         OrderItem[]
+  approvedById    String?
+  approvedByName  String?
+  approvedByRole  String?
+  approvedAt      DateTime?
+  auditTrail      String?
+}
+
+model OrderItem {
+  id          String @id @default(cuid())
+  orderId     String
+  productId   String
+  productName String
+  productEmoji String
+  quantity    Int
+  unitPrice   Float
+  variants    String?
+  addOns      String?
+  totalPrice  Float
+  order       Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model BillingCycle {
+  id            String   @id @default(cuid())
+  businessId    String
+  month         String
+  totalRevenue  Float    @default(0)
+  feeRate       Float    @default(2.0)
+  feeAmount     Float    @default(0)
+  status        String   @default("pending")
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}

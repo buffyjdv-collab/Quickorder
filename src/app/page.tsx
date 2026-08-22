@@ -25,6 +25,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useSession, signIn, signOut } from 'next-auth/react';
+import { AdminDashboard } from '@/components/admin-dashboard';
 
 // ─── Types ────────────────────────────────────────────────────────────
 type Section = 'overview' | 'orders' | 'menu' | 'qr' | 'revenue';
@@ -791,6 +792,10 @@ export default function Home() {
   );
 
   if (!session) return <LoginScreen />;
+
+  // Route SUPER_ADMIN to AdminDashboard, everyone else to owner Dashboard
+  const role = (session.user as any)?.role;
+  if (role === 'SUPER_ADMIN') return <AdminDashboard />;
 
   return <Dashboard />;
 }

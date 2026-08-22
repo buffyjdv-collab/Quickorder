@@ -18,3 +18,11 @@ export async function requireAuth() {
   if (!businessId) throw new Error("No business assigned");
   return { user, businessId };
 }
+
+export async function requireAdmin() {
+  const user = await getAuthUser();
+  if (!user) throw new Error("Unauthorized");
+  const role = (user as any).role;
+  if (role !== "SUPER_ADMIN") throw new Error("Admin access required");
+  return user;
+}

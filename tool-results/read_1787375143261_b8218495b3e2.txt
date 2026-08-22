@@ -1,0 +1,730 @@
+     1→'use client';
+     2→
+     3→import * as React from 'react';
+     4→import { AnimatePresence, motion } from 'framer-motion';
+     5→import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts';
+     6→import {
+     7→  ArrowDown, ArrowUp, BarChart3, Calendar, ChevronDown, ChevronRight,
+     8→  Clock, DollarSign, LayoutDashboard, ListOrdered, LogOut, Menu as MenuIcon,
+     9→  Package, QrCode, RefreshCw, Search, ShoppingBag, TrendingUp, UtensilsCrossed, X,
+    10→} from 'lucide-react';
+    11→
+    12→import { useFetch } from '@/hooks/use-fetch';
+    13→import { formatCurrency, formatTimeAgo, ORDER_STATUS_FLOW, ORDER_STATUS_META, PAYMENT_META, gradientFor, formatDate } from '@/lib/format';
+    14→import type { Analytics, Business, Category, Order, OrderStatus, PaymentMethod, RevenueDetail, Table as TableType } from '@/lib/types';
+    15→import { cn } from '@/lib/utils';
+    16→import { Badge } from '@/components/ui/badge';
+    17→import { Button } from '@/components/ui/button';
+    18→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+    19→import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+    20→import { Input } from '@/components/ui/input';
+    21→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    22→import { Skeleton } from '@/components/ui/skeleton';
+    23→import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    24→import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+    25→import { ScrollArea } from '@/components/ui/scroll-area';
+    26→import { Separator } from '@/components/ui/separator';
+    27→import { signOut } from 'next-auth/react';
+    28→
+    29→// ─── Types ────────────────────────────────────────────────────────────
+    30→type Section = 'overview' | 'orders' | 'menu' | 'qr' | 'revenue';
+    31→
+    32→const NAV_ITEMS: { key: Section; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    33→  { key: 'overview', label: 'Overview', icon: LayoutDashboard },
+    34→  { key: 'orders',   label: 'Orders',   icon: ListOrdered },
+    35→  { key: 'menu',     label: 'Menu',     icon: MenuIcon },
+    36→  { key: 'qr',       label: 'QR Codes', icon: QrCode },
+    37→  { key: 'revenue',  label: 'Revenue',  icon: DollarSign },
+    38→];
+    39→
+    40→const STATUS_HEX: Record<string, string> = {
+    41→  received: '#64748b', accepted: '#0284c7', preparing: '#d97706', ready: '#10b981', completed: '#059669', cancelled: '#dc2626',
+    42→};
+    43→const PAYMENT_HEX: Record<PaymentMethod, string> = { cash: '#10b981', upi: '#f59e0b', card: '#8b5cf6', wallet: '#0ea5e9' };
+    44→
+    45→const CAT_COLORS = ['#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#0ea5e9', '#ec4899', '#14b8a6', '#f97316'];
+    46→
+    47→// ─── Stat Card ────────────────────────────────────────────────────────
+    48→function StatCard({ icon: Icon, label, value, sub, accent }: {
+    49→  icon: React.ComponentType<{ className?: string }>; label: string; value: string; sub: string;
+    50→  accent: 'emerald' | 'amber' | 'rose' | 'sky' | 'violet';
+    51→}) {
+    52→  const m: Record<string, string> = {
+    53→    emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-200',
+    54→    amber: 'bg-amber-50 text-amber-600 ring-amber-200',
+    55→    rose: 'bg-rose-50 text-rose-600 ring-rose-200',
+    56→    sky: 'bg-sky-50 text-sky-600 ring-sky-200',
+    57→    violet: 'bg-violet-50 text-violet-600 ring-violet-200',
+    58→  };
+    59→  return (
+    60→    <Card className='overflow-hidden transition-shadow hover:shadow-md'>
+    61→      <CardHeader className='flex flex-row items-start justify-between gap-2 pb-2'>
+    62→        <div className='space-y-1 min-w-0'>
+    63→          <CardDescription className='text-xs uppercase tracking-wide'>{label}</CardDescription>
+    64→          <CardTitle className='text-xl font-bold tabular-nums sm:text-2xl lg:text-3xl truncate'>{value}</CardTitle>
+    65→        </div>
+    66→        <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-xl ring-1 sm:size-10', m[accent])}>
+    67→          <Icon className='size-4 sm:size-5' />
+    68→        </div>
+    69→      </CardHeader>
+    70→      <CardContent className='pt-0'>
+    71→        <p className='text-[11px] sm:text-xs text-muted-foreground'>{sub}</p>
+    72→      </CardContent>
+    73→    </Card>
+    74→  );
+    75→}
+    76→
+    77→// ─── Overview Section ─────────────────────────────────────────────────
+    78→function OverviewSection({ business, analytics }: { business: Business | null; analytics: AnalyticsResponse | null }) {
+    79→  const d = analytics;
+    80→  const currency = business?.currency || '₹';
+    81→  const revenueConfig: ChartConfig = { revenue: { label: 'Revenue', color: '#10b981' } };
+    82→  const paymentData = (d?.paymentBreakdown || []).map(p => ({ ...p, fill: PAYMENT_HEX[p.method as PaymentMethod] || '#94a3b8' }));
+    83→
+    84→  return (
+    85→    <div className='space-y-4 sm:space-y-6'>
+    86→      {/* Stats grid - 2 cols mobile, 4 cols desktop */}
+    87→      <div className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4'>
+    88→        {d ? <>
+    89→          <StatCard icon={DollarSign} label='Revenue' value={formatCurrency(d.totalRevenue, currency)} sub={`${d.completedOrders} completed`} accent='emerald' />
+    90→          <StatCard icon={ShoppingBag} label='Orders' value={String(d.totalOrders)} sub={`${d.cancelledOrders} cancelled`} accent='amber' />
+    91→          <StatCard icon={TrendingUp} label='Avg Order' value={formatCurrency(d.avgOrderValue, currency)} sub='per completed order' accent='sky' />
+    92→          <StatCard icon={RefreshCw} label='Active' value={String(d.activeOrders)} sub='in kitchen now' accent='rose' />
+    93→        </> : Array.from({ length: 4 }).map((_, i) => <Card key={i}><CardHeader className='pb-2'><Skeleton className='h-3 w-16' /><Skeleton className='h-8 w-24' /></CardHeader><CardContent><Skeleton className='h-3 w-20' /></CardContent></Card>)}
+    94→      </div>
+    95→
+    96→      {/* Charts - stacked mobile, side-by-side desktop */}
+    97→      <div className='grid grid-cols-1 gap-4 lg:grid-cols-3'>
+    98→        {/* Revenue chart */}
+    99→        <Card className='lg:col-span-2'>
+   100→          <CardHeader className='pb-2 sm:pb-4'>
+   101→            <CardTitle className='flex items-center gap-2 text-sm sm:text-base'><span className='text-base sm:text-lg'>📈</span> Revenue · Last 7 days</CardTitle>
+   102→            <CardDescription className='text-xs'>Daily revenue from completed orders</CardDescription>
+   103→          </CardHeader>
+   104→          <CardContent>
+   105→            {d ? <ChartContainer config={revenueConfig} className='h-[200px] sm:h-[240px] w-full'>
+   106→              <AreaChart data={d.revenueByDay} margin={{ left: 8, right: 12, top: 8, bottom: 0 }}>
+   107→                <defs><linearGradient id='revFill' x1='0' y1='0' x2='0' y2='1'><stop offset='5%' stopColor='#10b981' stopOpacity={0.35} /><stop offset='95%' stopColor='#10b981' stopOpacity={0} /></linearGradient></defs>
+   108→                <XAxis dataKey='day' tickLine={false} axisLine={false} fontSize={11} stroke='#94a3b8' />
+   109→                <YAxis tickLine={false} axisLine={false} fontSize={11} stroke='#94a3b8' width={45} tickFormatter={(v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : String(v)} />
+   110→                <ChartTooltip content={<ChartTooltipContent formatter={(value) => <span className='font-mono font-medium'>{formatCurrency(Number(value), currency)}</span>} />} />
+   111→                <Area type='monotone' dataKey='revenue' stroke='#10b981' strokeWidth={2.5} fill='url(#revFill)' dot={{ r: 3, fill: '#10b981', strokeWidth: 0 }} activeDot={{ r: 5 }} />
+   112→              </AreaChart>
+   113→            </ChartContainer> : <div className='flex h-[200px] items-end gap-2'>{Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className='flex-1' style={{ height: `${40 + (i % 3) * 30}px` }} />)}</div>}
+   114→          </CardContent>
+   115→        </Card>
+   116→
+   117→        {/* Payment pie */}
+   118→        <Card>
+   119→          <CardHeader className='pb-2 sm:pb-4'>
+   120→            <CardTitle className='flex items-center gap-2 text-sm sm:text-base'><span className='text-base sm:text-lg'>💳</span> Payments</CardTitle>
+   121→            <CardDescription className='text-xs'>Completed orders by method</CardDescription>
+   122→          </CardHeader>
+   123→          <CardContent>
+   124→            {d ? paymentData.length === 0 ? <p className='py-10 text-center text-sm text-muted-foreground'>No payments yet</p> : (
+   125→              <div className='flex flex-col items-center gap-3'>
+   126→                <ChartContainer config={{ count: { label: 'Orders', color: '#10b981' } }} className='mx-auto aspect-square h-[140px] sm:h-[160px]'>
+   127→                  <PieChart>
+   128→                    <ChartTooltip content={<ChartTooltipContent nameKey='count' />} />
+   129→                    <Pie data={paymentData} dataKey='count' nameKey='method' innerRadius={35} outerRadius={60} paddingAngle={2} strokeWidth={2}>
+   130→                      {paymentData.map((e) => <Cell key={e.method} fill={e.fill} />)}
+   131→                    </Pie>
+   132→                  </PieChart>
+   133→                </ChartContainer>
+   134→                <ul className='grid w-full grid-cols-2 gap-1.5 text-xs'>
+   135→                  {paymentData.map(p => { const meta = PAYMENT_META[p.method as PaymentMethod]; return (
+   136→                    <li key={p.method} className='flex items-center justify-between rounded-md bg-muted/40 px-2 py-1'>
+   137→                      <span className='flex items-center gap-1.5'><span className='size-2.5 rounded-full' style={{ background: p.fill }} />{meta?.emoji} {meta?.label}</span>
+   138→                      <span className='font-mono font-medium tabular-nums'>{p.count}</span>
+   139→                    </li>); })}
+   140→                </ul>
+   141→              </div>
+   142→            ) : <div className='flex h-[160px] items-center justify-center'><Skeleton className='size-32 rounded-full' /></div>}
+   143→          </CardContent>
+   144→        </Card>
+   145→      </div>
+   146→
+   147→      {/* Status + Top products - side by side on desktop */}
+   148→      <div className='grid grid-cols-1 gap-4 lg:grid-cols-2'>
+   149→        <Card>
+   150→          <CardHeader className='pb-2'><CardTitle className='text-sm sm:text-base'>🗂️ Orders by Status</CardTitle></CardHeader>
+   151→          <CardContent className='space-y-2'>
+   152→            {d ? (d.ordersByStatus || []).map(s => {
+   153→              const meta = ORDER_STATUS_META[s.status as OrderStatus];
+   154→              const max = Math.max(...(d?.ordersByStatus || []).map(x => x.count), 1);
+   155→              return (<div key={s.status} className='space-y-1'>
+   156→                <div className='flex items-center justify-between text-xs'><span className='flex items-center gap-1.5'><span>{meta?.emoji}</span><span className='font-medium'>{meta?.label}</span></span><span className='font-mono tabular-nums text-muted-foreground'>{s.count}</span></div>
+   157→                <div className='h-2 w-full overflow-hidden rounded-full bg-muted'><div className='h-full rounded-full transition-all' style={{ width: `${(s.count / max) * 100}%`, background: STATUS_HEX[s.status] || '#94a3b8' }} /></div>
+   158→              </div>);
+   159→            }) : Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className='h-8 w-full' />)}
+   160→          </CardContent>
+   161→        </Card>
+   162→        <Card>
+   163→          <CardHeader className='pb-2'><CardTitle className='text-sm sm:text-base'>🏆 Top Products</CardTitle></CardHeader>
+   164→          <CardContent>
+   165→            {d ? (d.topProducts || []).length === 0 ? <p className='py-6 text-center text-sm text-muted-foreground'>No sales yet</p> : (
+   166→              <ScrollArea className='max-h-[220px]'>
+   167→                <ol className='space-y-1.5'>
+   168→                  {(d.topProducts || []).map((p, idx) => (
+   169→                    <li key={p.name} className='flex items-center gap-2.5 rounded-lg border bg-card px-3 py-2 transition-colors hover:bg-accent/40'>
+   170→                      <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold', idx === 0 ? 'bg-amber-100 text-amber-700' : idx === 1 ? 'bg-slate-200 text-slate-700' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground')}>{idx + 1}</span>
+   171→                      <span className='text-base sm:text-lg'>{p.emoji}</span>
+   172→                      <div className='min-w-0 flex-1'><p className='truncate text-xs sm:text-sm font-medium'>{p.name}</p><p className='text-[10px] sm:text-xs text-muted-foreground'>{p.count} sold</p></div>
+   173→                      <span className='font-mono text-xs sm:text-sm font-semibold tabular-nums text-emerald-700'>{formatCurrency(p.revenue, currency)}</span>
+   174→                    </li>))}
+   175→                </ol>
+   176→              </ScrollArea>
+   177→            ) : <div className='space-y-2'>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className='h-9 w-full' />)}</div>}
+   178→          </CardContent>
+   179→        </Card>
+   180→      </div>
+   181→    </div>
+   182→  );
+   183→}
+   184→
+   185→// ─── Orders Section ───────────────────────────────────────────────────
+   186→function OrdersSection({ orders }: { orders: Order[] }) {
+   187→  const [search, setSearch] = React.useState('');
+   188→  const [activeOnly, setActiveOnly] = React.useState(false);
+   189→  const filtered = React.useMemo(() => {
+   190→    const q = search.trim().toLowerCase();
+   191→    return orders.filter(o => {
+   192→      if (activeOnly && (o.status === 'completed' || o.status === 'cancelled')) return false;
+   193→      if (!q) return true;
+   194→      return String(o.orderNumber).includes(q) || (o.tableCode || '').toLowerCase().includes(q) || (o.customerName || '').toLowerCase().includes(q);
+   195→    });
+   196→  }, [orders, search, activeOnly]);
+   197→
+   198→  const byStatus = React.useMemo(() => {
+   199→    const map: Record<string, Order[]> = {};
+   200→    for (const s of ORDER_STATUS_FLOW) map[s] = [];
+   201→    for (const o of filtered) { if (map[o.status]) map[o.status].push(o); }
+   202→    return map;
+   203→  }, [filtered]);
+   204→
+   205→  return (
+   206→    <div className='space-y-3'>
+   207→      {/* Search bar */}
+   208→      <div className='flex flex-wrap items-center gap-2'>
+   209→        <div className='relative flex-1 min-w-[180px]'>
+   210→          <Search className='absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground' />
+   211→          <Input placeholder='Search order #, table…' value={search} onChange={e => setSearch(e.target.value)} className='pl-8 h-9 text-sm' />
+   212→        </div>
+   213→        <Badge variant={activeOnly ? 'default' : 'secondary'} className='cursor-pointer h-8 gap-1.5 px-3 select-none' onClick={() => setActiveOnly(!activeOnly)}>
+   214→          {activeOnly ? 'All' : 'Active'} · {filtered.length}
+   215→        </Badge>
+   216→      </div>
+   217→
+   218→      {/* Desktop: Kanban columns */}
+   219→      <div className='hidden lg:block'>
+   220→        <div className='flex gap-3 overflow-x-auto pb-2'>
+   221→          {ORDER_STATUS_FLOW.map(status => {
+   222→            const meta = ORDER_STATUS_META[status];
+   223→            const cols = byStatus[status] || [];
+   224→            return (
+   225→              <div key={status} className='flex min-w-[260px] flex-1 flex-col gap-2'>
+   226→                <div className={cn('sticky top-0 z-10 flex items-center justify-between rounded-lg px-3 py-2 ring-1', meta.bg, meta.ring)}>
+   227→                  <span className='flex items-center gap-2 text-sm font-semibold'><span>{meta.emoji}</span>{meta.label}</span>
+   228→                  <Badge variant='secondary' className={cn('bg-white/70 tabular-nums', meta.color)}>{cols.length}</Badge>
+   229→                </div>
+   230→                <ScrollArea className='max-h-[calc(100vh-280px)]'>
+   231→                  <div className='space-y-2 pr-1'>
+   232→                    {cols.length === 0 ? <div className='flex h-20 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground'>No orders</div> : cols.map(o => <OrderCard key={o.id} order={o} />)}
+   233→                  </div>
+   234→                </ScrollArea>
+   235→              </div>);
+   236→          })}
+   237→        </div>
+   238→      </div>
+   239→
+   240→      {/* Mobile: List view grouped by status */}
+   241→      <div className='lg:hidden space-y-4'>
+   242→        {ORDER_STATUS_FLOW.map(status => {
+   243→          const meta = ORDER_STATUS_META[status];
+   244→          const cols = byStatus[status] || [];
+   245→          if (cols.length === 0) return null;
+   246→          return (
+   247→            <div key={status}>
+   248→              <div className={cn('flex items-center justify-between rounded-lg px-3 py-2 mb-2 ring-1', meta.bg, meta.ring)}>
+   249→                <span className='flex items-center gap-2 text-sm font-semibold'><span>{meta.emoji}</span>{meta.label}</span>
+   250→                <Badge variant='secondary' className={cn('bg-white/70 tabular-nums', meta.color)}>{cols.length}</Badge>
+   251→              </div>
+   252→              <div className='space-y-2'>{cols.map(o => <OrderCard key={o.id} order={o} compact />)}</div>
+   253→            </div>);
+   254→        })}
+   255→      </div>
+   256→    </div>
+   257→  );
+   258→}
+   259→
+   260→function OrderCard({ order, compact }: { order: Order; compact?: boolean }) {
+   261→  const meta = ORDER_STATUS_META[order.status];
+   262→  const payMeta = PAYMENT_META[order.paymentMethod];
+   263→  return (
+   264→    <Card className={cn('shadow-sm transition-shadow hover:shadow-md border-l-4', meta.ring.replace('ring-', 'border-l-'))}>
+   265→      <CardContent className='p-3 space-y-2'>
+   266→        <div className='flex items-start justify-between gap-2'>
+   267→          <div className='min-w-0'>
+   268→            <div className='flex flex-wrap items-center gap-1.5'>
+   269→              <span className='font-mono text-sm font-bold'>#{order.orderNumber}</span>
+   270→              {order.tableCode ? <Badge variant='secondary' className='bg-emerald-50 text-emerald-700 text-[10px]'>🪑 {order.tableCode}</Badge> : <Badge variant='secondary' className='text-[10px]'>🥡 Counter</Badge>}
+   271→              <Badge className={cn('text-[10px]', meta.bg, meta.color)}>{meta.label}</Badge>
+   272→            </div>
+   273→            <p className='mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground'><Clock className='size-3' />{formatTimeAgo(order.createdAt)}</p>
+   274→          </div>
+   275→          <div className='text-right shrink-0'>
+   276→            <p className='font-mono text-sm font-bold tabular-nums'>₹{order.total.toLocaleString()}</p>
+   277→            <p className='text-[10px] text-muted-foreground'>{payMeta.emoji} {payMeta.label}</p>
+   278→          </div>
+   279→        </div>
+   280→        {!compact && order.items.length > 0 && (
+   281→          <div className='max-h-[120px] space-y-1 overflow-y-auto rounded-md bg-muted/30 p-2'>
+   282→            {order.items.map(it => (
+   283→              <div key={it.id} className='flex items-center gap-2 text-xs'>
+   284→                <span>{it.productEmoji}</span>
+   285→                <span className='flex-1 truncate'>{it.productName}</span>
+   286→                <span className='text-muted-foreground'>×{it.quantity}</span>
+   287→                <span className='font-mono tabular-nums'>₹{it.totalPrice}</span>
+   288→              </div>
+   289→            ))}
+   290→          </div>
+   291→        )}
+   292→      </CardContent>
+   293→    </Card>
+   294→  );
+   295→}
+   296→
+   297→// ─── Menu Section ─────────────────────────────────────────────────────
+   298→function MenuSection({ categories }: { categories: Category[] | null }) {
+   299→  const [expanded, setExpanded] = React.useState<string | null>(null);
+   300→  if (!categories) return <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className='h-40 w-full rounded-2xl' />)}</div>;
+   301→
+   302→  return (
+   303→    <div className='space-y-4'>
+   304→      {categories.map(cat => {
+   305→        const isOpen = expanded === cat.id;
+   306→        return (
+   307→          <Collapsible key={cat.id} open={isOpen} onOpenChange={(v) => setExpanded(v ? cat.id : null)}>
+   308→            <CollapsibleTrigger asChild>
+   309→              <button className='flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 p-4 text-left transition-colors hover:from-emerald-100 hover:to-teal-100 ring-1 ring-emerald-200'>
+   310→                <div className='flex items-center gap-3'>
+   311→                  <span className='flex size-10 items-center justify-center rounded-xl bg-white text-xl shadow-sm ring-1 ring-emerald-200'>{cat.emoji || '🍽️'}</span>
+   312→                  <div><p className='font-bold text-sm sm:text-base'>{cat.name}</p><p className='text-xs text-muted-foreground'>{cat.products?.length || 0} items</p></div>
+   313→                </div>
+   314→                <ChevronDown className={cn('size-5 text-emerald-600 transition-transform', isOpen && 'rotate-180')} />
+   315→              </button>
+   316→            </CollapsibleTrigger>
+   317→            <CollapsibleContent>
+   318→              <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-3'>
+   319→                {(cat.products || []).map(p => (
+   320→                  <Card key={p.id} className='overflow-hidden transition-shadow hover:shadow-md'>
+   321→                    <div className={cn('h-20 sm:h-24 bg-gradient-to-br flex items-center justify-center', gradientFor(p.imageColor))}>
+   322→                      <span className='text-3xl sm:text-4xl drop-shadow-md'>{p.emoji}</span>
+   323→                    </div>
+   324→                    <CardContent className='p-3'>
+   325→                      <div className='flex items-start justify-between gap-2'>
+   326→                        <div className='min-w-0'><p className='font-semibold text-sm truncate'>{p.name}</p><p className='text-[11px] text-muted-foreground mt-0.5 line-clamp-1'>{p.description}</p></div>
+   327→                        <span className='font-mono text-sm font-bold text-emerald-700 shrink-0'>₹{p.price}</span>
+   328→                      </div>
+   329→                      <div className='flex items-center gap-2 mt-2'>
+   330→                        {p.popular && <Badge className='bg-amber-100 text-amber-700 text-[10px]'>Popular</Badge>}
+   331→                        <span className='text-[10px] text-muted-foreground'>⏱ {p.prepTime}min</span>
+   332→                        {!p.available && <Badge variant='secondary' className='text-[10px] bg-red-50 text-red-600'>Unavailable</Badge>}
+   333→                      </div>
+   334→                    </CardContent>
+   335→                  </Card>
+   336→                ))}
+   337→              </div>
+   338→            </CollapsibleContent>
+   339→          </Collapsible>);
+   340→      })}
+   341→    </div>
+   342→  );
+   343→}
+   344→
+   345→// ─── QR Section ───────────────────────────────────────────────────────
+   346→function QrSection({ tables }: { tables: TableType[] | null }) {
+   347→  if (!tables) return <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className='h-48 w-full rounded-2xl' />)}</div>;
+   348→
+   349→  return (
+   350→    <div className='space-y-4'>
+   351→      <div className='flex items-center justify-between'>
+   352→        <p className='text-sm text-muted-foreground'>{tables.length} tables configured</p>
+   353→      </div>
+   354→      <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>
+   355→        {tables.map(t => (
+   356→          <Card key={t.id} className={cn('overflow-hidden transition-shadow hover:shadow-md', !t.active && 'opacity-60')}>
+   357→            <div className={cn('flex items-center gap-3 p-4', t.active ? 'bg-gradient-to-r from-emerald-50 to-teal-50' : 'bg-muted/50')}>
+   358→              <div className={cn('flex size-12 items-center justify-center rounded-xl text-2xl ring-1', t.active ? 'bg-white ring-emerald-200 shadow-sm' : 'bg-muted ring-muted-foreground/20')}>
+   359→                {t.active ? '📱' : '🚫'}
+   360→              </div>
+   361→              <div className='min-w-0 flex-1'>
+   362→                <p className='font-semibold text-sm truncate'>{t.name}</p>
+   363→                <p className='text-xs text-muted-foreground'>Code: <span className='font-mono font-medium'>{t.code}</span></p>
+   364→              </div>
+   365→              <Badge variant={t.active ? 'default' : 'secondary'} className={t.active ? 'bg-emerald-600' : ''}>{t.active ? 'Active' : 'Inactive'}</Badge>
+   366→            </div>
+   367→            <CardContent className='p-4 space-y-2'>
+   368→              <div className='grid grid-cols-3 gap-2 text-center'>
+   369→                <div className='rounded-lg bg-muted/40 p-2'><p className='text-xs text-muted-foreground'>Zone</p><p className='text-sm font-semibold mt-0.5'>{t.zone || '—'}</p></div>
+   370→                <div className='rounded-lg bg-muted/40 p-2'><p className='text-xs text-muted-foreground'>Seats</p><p className='text-sm font-semibold mt-0.5'>{t.capacity}</p></div>
+   371→                <div className='rounded-lg bg-muted/40 p-2'><p className='text-xs text-muted-foreground'>Scans</p><p className='text-sm font-semibold mt-0.5'>{t.scans}</p></div>
+   372→              </div>
+   373→              {/* QR placeholder */}
+   374→              <div className='flex items-center justify-center rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-4'>
+   375→                <div className='text-center'>
+   376→                  <QrCode className='size-8 mx-auto text-emerald-400 mb-1' />
+   377→                  <p className='text-[10px] text-emerald-600 font-medium'>QR: {t.code}</p>
+   378→                </div>
+   379→              </div>
+   380→            </CardContent>
+   381→          </Card>
+   382→        ))}
+   383→      </div>
+   384→    </div>
+   385→  );
+   386→}
+   387→
+   388→// ─── Revenue Section (THE KEY FEATURE) ─────────────────────────────────
+   389→function RevenueSection() {
+   390→  const [period, setPeriod] = React.useState<'day' | 'month' | 'year'>('month');
+   391→  const [dateOffset, setDateOffset] = React.useState(0);
+   392→  const [sortBy, setSortBy] = React.useState<'revenue' | 'orders' | 'date'>('revenue');
+   393→  const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('desc');
+   394→
+   395→  const targetDate = new Date();
+   396→  if (period === 'day') targetDate.setDate(targetDate.getDate() + dateOffset);
+   397→  else if (period === 'month') targetDate.setMonth(targetDate.getMonth() + dateOffset);
+   398→  else targetDate.setFullYear(targetDate.getFullYear() + dateOffset);
+   399→
+   400→  const revenueUrl = `/api/revenue?period=${period}&date=${targetDate.toISOString()}&sortBy=${sortBy}&sortOrder=${sortOrder}`;
+   401→  const { data: rev, loading } = useFetch<RevenueDetail>(revenueUrl);
+   402→
+   403→  const barConfig: ChartConfig = { revenue: { label: 'Revenue', color: '#10b981' }, orders: { label: 'Orders', color: '#f59e0b' } };
+   404→
+   405→  const prevPeriod = () => { if (period === 'day') setDateOffset(d => d - 1); else if (period === 'month') setDateOffset(d => d - 1); else setDateOffset(d => d - 1); };
+   406→  const nextPeriod = () => { if (dateOffset < 0) setDateOffset(d => d + 1); };
+   407→  const periodLabel = rev?.period || '';
+   408→
+   409→  return (
+   410→    <div className='space-y-4 sm:space-y-6'>
+   411→      {/* Period selector + navigation */}
+   412→      <Card>
+   413→        <CardContent className='p-3 sm:p-4'>
+   414→          <div className='flex flex-col sm:flex-row sm:items-center gap-3'>
+   415→            <div className='flex items-center gap-2'>
+   416→              <Button variant='outline' size='icon' className='size-8' onClick={prevPeriod}><ChevronRight className='size-4 rotate-180' /></Button>
+   417→              <Button variant='outline' size='icon' className='size-8' onClick={nextPeriod} disabled={dateOffset >= 0}><ChevronRight className='size-4' /></Button>
+   418→            </div>
+   419→            <div className='flex-1'>
+   420→              <div className='flex flex-wrap items-center gap-2'>
+   421→                {(['day', 'month', 'year'] as const).map(p => (
+   422→                  <Button key={p} variant={period === p ? 'default' : 'outline'} size='sm' className={cn('h-8 text-xs capitalize', period === p && 'bg-emerald-600 hover:bg-emerald-700')} onClick={() => { setPeriod(p); setDateOffset(0); }}>
+   423→                    <Calendar className='size-3.5 mr-1' />{p}
+   424→                  </Button>
+   425→                ))}
+   426→              </div>
+   427→              <p className='mt-1 text-xs text-muted-foreground'>{periodLabel}</p>
+   428→            </div>
+   429→            <div className='flex items-center gap-2'>
+   430→              <Select value={sortBy} onValueChange={v => setSortBy(v as any)}>
+   431→                <SelectTrigger className='h-8 w-[120px] text-xs'><SelectValue /></SelectTrigger>
+   432→                <SelectContent>
+   433→                  <SelectItem value='revenue'>Sort: Revenue</SelectItem>
+   434→                  <SelectItem value='orders'>Sort: Orders</SelectItem>
+   435→                  <SelectItem value='date'>Sort: Date</SelectItem>
+   436→                </SelectContent>
+   437→              </Select>
+   438→              <Button variant='outline' size='icon' className='size-8' onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}>
+   439→                {sortOrder === 'desc' ? <ArrowDown className='size-3.5' /> : <ArrowUp className='size-3.5' />}
+   440→              </Button>
+   441→            </div>
+   442→          </div>
+   443→        </CardContent>
+   444→      </Card>
+   445→
+   446→      {/* Summary stats */}
+   447→      {rev && <div className='grid grid-cols-3 gap-3'>
+   448→        <StatCard icon={DollarSign} label='Revenue' value={formatCurrency(rev.totalRevenue)} sub='total sales' accent='emerald' />
+   449→        <StatCard icon={ShoppingBag} label='Orders' value={String(rev.totalOrders)} sub='completed' accent='amber' />
+   450→        <StatCard icon={TrendingUp} label='Avg Value' value={formatCurrency(rev.avgOrderValue)} sub='per order' accent='sky' />
+   451→      </div>}
+   452→
+   453→      {loading && !rev && <div className='space-y-4'>{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className='h-64 w-full rounded-2xl' />)}</div>}
+   454→
+   455→      {rev && <>
+   456→        {/* Daily breakdown chart + table */}
+   457→        <Collapsible defaultOpen>
+   458→          <CollapsibleTrigger asChild>
+   459→            <button className='flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 p-4 text-left transition-colors hover:from-emerald-100 hover:to-teal-100 ring-1 ring-emerald-200'>
+   460→              <div className='flex items-center gap-3'>
+   461→                <span className='flex size-10 items-center justify-center rounded-xl bg-white text-xl shadow-sm ring-1 ring-emerald-200'>📅</span>
+   462→                <div><p className='font-bold text-sm sm:text-base'>Daily Breakdown</p><p className='text-xs text-muted-foreground'>{rev.dailyBreakdown.length} days with sales</p></div>
+   463→              </div>
+   464→              <ChevronDown className='size-5 text-emerald-600' data-state='open' />
+   465→            </button>
+   466→          </CollapsibleTrigger>
+   467→          <CollapsibleContent>
+   468→            <div className='mt-3 space-y-4'>
+   469→              <Card className='hidden sm:block'>
+   470→                <CardHeader className='pb-2'><CardTitle className='text-sm'>Daily Revenue Trend</CardTitle></CardHeader>
+   471→                <CardContent>
+   472→                  <ChartContainer config={barConfig} className='h-[220px] w-full'>
+   473→                    <BarChart data={rev.dailyBreakdown} margin={{ left: 8, right: 12, top: 8, bottom: 0 }}>
+   474→                      <XAxis dataKey='date' tickLine={false} axisLine={false} fontSize={10} stroke='#94a3b8' />
+   475→                      <YAxis tickLine={false} axisLine={false} fontSize={10} stroke='#94a3b8' width={50} tickFormatter={(v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : String(v)} />
+   476→                      <ChartTooltip content={<ChartTooltipContent />} />
+   477→                      <Bar dataKey='revenue' fill='#10b981' radius={[4, 4, 0, 0]} />
+   478→                    </BarChart>
+   479→                  </ChartContainer>
+   480→                </CardContent>
+   481→              </Card>
+   482→              <Card>
+   483→                <CardContent className='p-0'>
+   484→                  <div className='overflow-x-auto'>
+   485→                    <table className='w-full text-xs sm:text-sm'>
+   486→                      <thead><tr className='border-b bg-muted/50'>
+   487→                        <th className='text-left p-3 font-semibold'>Date</th>
+   488→                        <th className='text-right p-3 font-semibold'>Revenue</th>
+   489→                        <th className='text-right p-3 font-semibold hidden sm:table-cell'>Orders</th>
+   490→                        <th className='text-right p-3 font-semibold hidden md:table-cell'>Avg Value</th>
+   491→                      </tr></thead>
+   492→                      <tbody>
+   493→                        {rev.dailyBreakdown.map((d, i) => (
+   494→                          <tr key={i} className='border-b last:border-0 hover:bg-muted/30 transition-colors'>
+   495→                            <td className='p-3 font-medium'>{d.date}</td>
+   496→                            <td className='p-3 text-right font-mono font-semibold text-emerald-700 tabular-nums'>{formatCurrency(d.revenue)}</td>
+   497→                            <td className='p-3 text-right font-mono tabular-nums hidden sm:table-cell'>{d.orders}</td>
+   498→                            <td className='p-3 text-right font-mono tabular-nums hidden md:table-cell'>{formatCurrency(d.avgOrderValue)}</td>
+   499→                          </tr>))}
+   500→                      </tbody>
+   501→                    </table>
+   502→                  </div>
+   503→                </CardContent>
+   504→              </Card>
+   505→            </div>
+   506→          </CollapsibleContent>
+   507→        </Collapsible>
+   508→
+   509→        {/* Category-wise breakdown */}
+   510→        <Collapsible defaultOpen>
+   511→          <CollapsibleTrigger asChild>
+   512→            <button className='flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 p-4 text-left transition-colors hover:from-amber-100 hover:to-orange-100 ring-1 ring-amber-200'>
+   513→              <div className='flex items-center gap-3'>
+   514→                <span className='flex size-10 items-center justify-center rounded-xl bg-white text-xl shadow-sm ring-1 ring-amber-200'>📂</span>
+   515→                <div><p className='font-bold text-sm sm:text-base'>Category-Wise Revenue</p><p className='text-xs text-muted-foreground'>{rev.categoryBreakdown.length} categories</p></div>
+   516→              </div>
+   517→              <ChevronDown className='size-5 text-amber-600' data-state='open' />
+   518→            </button>
+   519→          </CollapsibleTrigger>
+   520→          <CollapsibleContent>
+   521→            <div className='mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3'>
+   522→              {rev.categoryBreakdown.map((c, i) => (
+   523→                <Card key={i} className='overflow-hidden hover:shadow-md transition-shadow'>
+   524→                  <div className='flex items-center gap-3 p-4'>
+   525→                    <div className='flex size-10 shrink-0 items-center justify-center rounded-xl text-lg' style={{ background: `${CAT_COLORS[i % CAT_COLORS.length]}20`, color: CAT_COLORS[i % CAT_COLORS.length] }}>
+   526→                      {c.categoryEmoji || '📂'}
+   527→                    </div>
+   528→                    <div className='min-w-0 flex-1'>
+   529→                      <p className='font-semibold text-sm truncate'>{c.categoryName}</p>
+   530→                      <p className='text-xs text-muted-foreground'>{c.productCount} products · {c.orders} orders</p>
+   531→                    </div>
+   532→                    <div className='text-right shrink-0'>
+   533→                      <p className='font-mono text-sm font-bold text-emerald-700 tabular-nums'>{formatCurrency(c.revenue)}</p>
+   534→                    </div>
+   535→                  </div>
+   536→                  <div className='px-4 pb-3'>
+   537→                    <div className='h-2 w-full overflow-hidden rounded-full bg-muted'>
+   538→                      <div className='h-full rounded-full transition-all' style={{ width: `${rev.categoryBreakdown.length > 0 ? (c.revenue / Math.max(...rev.categoryBreakdown.map(x => x.revenue))) * 100 : 0}%`, background: CAT_COLORS[i % CAT_COLORS.length] }} />
+   539→                    </div>
+   540→                  </div>
+   541→                </Card>))}
+   542→            </div>
+   543→          </CollapsibleContent>
+   544→        </Collapsible>
+   545→
+   546→        {/* Product-wise breakdown */}
+   547→        <Collapsible>
+   548→          <CollapsibleTrigger asChild>
+   549→            <button className='flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-violet-50 to-purple-50 p-4 text-left transition-colors hover:from-violet-100 hover:to-purple-100 ring-1 ring-violet-200'>
+   550→              <div className='flex items-center gap-3'>
+   551→                <span className='flex size-10 items-center justify-center rounded-xl bg-white text-xl shadow-sm ring-1 ring-violet-200'>🍽️</span>
+   552→                <div><p className='font-bold text-sm sm:text-base'>Product-Wise Revenue</p><p className='text-xs text-muted-foreground'>{rev.productBreakdown.length} products</p></div>
+   553→              </div>
+   554→              <ChevronDown className='size-5 text-violet-600' />
+   555→            </button>
+   556→          </CollapsibleTrigger>
+   557→          <CollapsibleContent>
+   558→            <div className='mt-3'>
+   559→              <Card>
+   560→                <CardContent className='p-0'>
+   561→                  <div className='overflow-x-auto'>
+   562→                    <table className='w-full text-xs sm:text-sm'>
+   563→                      <thead><tr className='border-b bg-muted/50'>
+   564→                        <th className='text-left p-3 font-semibold'>#</th>
+   565→                        <th className='text-left p-3 font-semibold'>Product</th>
+   566→                        <th className='text-left p-3 font-semibold hidden sm:table-cell'>Category</th>
+   567→                        <th className='text-right p-3 font-semibold'>Qty</th>
+   568→                        <th className='text-right p-3 font-semibold'>Revenue</th>
+   569→                      </tr></thead>
+   570→                      <tbody>
+   571→                        {rev.productBreakdown.map((p, i) => (
+   572→                          <tr key={i} className='border-b last:border-0 hover:bg-muted/30 transition-colors'>
+   573→                            <td className='p-3'><span className={cn('flex size-6 items-center justify-center rounded-full text-[10px] font-bold', i < 3 ? 'bg-amber-100 text-amber-700' : 'bg-muted text-muted-foreground')}>{i + 1}</span></td>
+   574→                            <td className='p-3'><span className='flex items-center gap-2'><span>{p.productEmoji}</span><span className='font-medium'>{p.productName}</span></span></td>
+   575→                            <td className='p-3 text-muted-foreground hidden sm:table-cell'>{p.categoryName}</td>
+   576→                            <td className='p-3 text-right font-mono tabular-nums'>{p.quantity}</td>
+   577→                            <td className='p-3 text-right font-mono font-semibold text-emerald-700 tabular-nums'>{formatCurrency(p.revenue)}</td>
+   578→                          </tr>))}
+   579→                      </tbody>
+   580→                    </table>
+   581→                  </div>
+   582→                </CardContent>
+   583→              </Card>
+   584→            </div>
+   585→          </CollapsibleContent>
+   586→        </Collapsible>
+   587→      </>}
+   588→    </div>
+   589→  );
+   590→}
+   591→
+   592→// ─── Main Page ────────────────────────────────────────────────────────
+   593→type AnalyticsResponse = Analytics & { tableCount: number; productCount: number; lowStock: any[]; avgPrepTime: number };
+   594→
+   595→export default function Home() {
+   596→  const [section, setSection] = React.useState<Section>('overview');
+   597→  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+   598→
+   599→  const { data: business } = useFetch<Business>('/api/business');
+   600→  const { data: orders } = useFetch<Order[]>('/api/orders?limit=200', { interval: 15000 });
+   601→  const { data: analytics } = useFetch<AnalyticsResponse>('/api/analytics', { interval: 30000 });
+   602→  const { data: categories } = useFetch<Category[]>('/api/categories');
+   603→  const { data: tables } = useFetch<TableType[]>('/api/tables');
+   604→
+   605→  const activeOrders = (orders || []).filter(o => ['received', 'accepted', 'preparing', 'ready'].includes(o.status)).length;
+   606→
+   607→  return (
+   608→    <div className='min-h-screen flex flex-col bg-muted/30'>
+   609→      {/* Header - responsive */}
+   610→      <header className='sticky top-0 z-30 flex h-14 sm:h-16 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur'>
+   611→        {/* Mobile menu toggle */}
+   612→        <button className='lg:hidden flex size-9 items-center justify-center rounded-xl hover:bg-muted' onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label='Toggle menu'>
+   613→          <MenuIcon className='size-5' />
+   614→        </button>
+   615→        {business ? (
+   616→          <div className='flex items-center gap-3 min-w-0 flex-1'>
+   617→            <div className='flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 text-lg sm:text-xl shadow-sm'>{business.logoEmoji}</div>
+   618→            <div className='min-w-0'>
+   619→              <p className='truncate text-sm sm:text-base font-bold'>{business.name}</p>
+   620→              <p className='hidden sm:block text-xs text-muted-foreground'>{business.tagline}</p>
+   621→            </div>
+   622→          </div>
+   623→        ) : <Skeleton className='size-9 rounded-xl' />}
+   624→        <div className='flex items-center gap-2'>
+   625→          {activeOrders > 0 && <Badge className='bg-emerald-100 text-emerald-700 tabular-nums hidden sm:flex'>{activeOrders} active</Badge>}
+   626→          <Button variant='ghost' size='sm' className='h-8 gap-1.5 text-muted-foreground hover:text-red-600' onClick={() => signOut({ callbackUrl: '/' })}>
+   627→            <LogOut className='size-4' /><span className='hidden sm:inline text-xs'>Logout</span>
+   628→          </Button>
+   629→        </div>
+   630→      </header>
+   631→
+   632→      <div className='flex flex-1'>
+   633→        {/* Sidebar - desktop only */}
+   634→        <aside className='hidden lg:flex w-56 flex-col border-r bg-background/50 p-3 gap-1'>
+   635→          <p className='px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground'>Dashboard</p>
+   636→          {NAV_ITEMS.map(item => {
+   637→            const Icon = item.icon;
+   638→            const active = section === item.key;
+   639→            return (
+   640→              <button key={item.key} onClick={() => setSection(item.key)}
+   641→                className={cn('flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+   642→                  active ? 'bg-emerald-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+   643→                <Icon className='size-4' />{item.label}
+   644→                {item.key === 'orders' && activeOrders > 0 && <span className='ml-auto flex size-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white'>{activeOrders}</span>}
+   645→              </button>);
+   646→          })}
+   647→          <div className='mt-auto pt-4'>
+   648→            <Separator className='mb-2' />
+   649→            <button onClick={() => signOut({ callbackUrl: '/' })}
+   650→              className='flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600'>
+   651→              <LogOut className='size-4' />Logout
+   652→            </button>
+   653→          </div>
+   654→        </aside>
+   655→
+   656→        {/* Mobile drawer */}
+   657→        <AnimatePresence>
+   658→          {mobileMenuOpen && <>
+   659→            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className='fixed inset-0 z-40 bg-black/40 lg:hidden' onClick={() => setMobileMenuOpen(false)} />
+   660→            <motion.div initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+   661→              className='fixed inset-y-0 left-0 z-50 w-[280px] bg-background shadow-xl lg:hidden'>
+   662→              <div className='flex items-center justify-between p-4 border-b'>
+   663→                <div className='flex items-center gap-2'><span className='text-xl'>{business?.logoEmoji || '🍽️'}</span><span className='font-bold'>{business?.name || 'QuickOrder'}</span></div>
+   664→                <button onClick={() => setMobileMenuOpen(false)} className='size-8 flex items-center justify-center rounded-lg hover:bg-muted'><X className='size-4' /></button>
+   665→              </div>
+   666→              <nav className='p-3 space-y-1'>
+   667→                {NAV_ITEMS.map(item => {
+   668→                  const Icon = item.icon; const active = section === item.key;
+   669→                  return (
+   670→                    <button key={item.key} onClick={() => { setSection(item.key); setMobileMenuOpen(false); }}
+   671→                      className={cn('flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors',
+   672→                        active ? 'bg-emerald-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-muted')}>
+   673→                      <Icon className='size-5' />{item.label}
+   674→                      {item.key === 'orders' && activeOrders > 0 && <span className='ml-auto flex size-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white'>{activeOrders}</span>}
+   675→                    </button>);
+   676→                })}
+   677→                <Separator className='my-2' />
+   678→                <button onClick={() => signOut({ callbackUrl: '/' })}
+   679→                  className='flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50'>
+   680→                  <LogOut className='size-5' />Logout
+   681→                </button>
+   682→              </nav>
+   683→            </motion.div>
+   684→          </>}
+   685→        </AnimatePresence>
+   686→
+   687→        {/* Main content */}
+   688→        <main className='flex-1 min-w-0'>
+   689→          <div className='mx-auto w-full max-w-6xl px-3 sm:px-4 lg:px-6 py-4 sm:py-6'>
+   690→            {/* Mobile tab bar */}
+   691→            <div className='lg:hidden mb-4 overflow-x-auto -mx-3 px-3'>
+   692→              <div className='flex gap-1 min-w-max'>
+   693→                {NAV_ITEMS.map(item => {
+   694→                  const Icon = item.icon; const active = section === item.key;
+   695→                  return (
+   696→                    <button key={item.key} onClick={() => setSection(item.key)}
+   697→                      className={cn('flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
+   698→                        active ? 'bg-emerald-600 text-white shadow-sm' : 'bg-muted/60 text-muted-foreground hover:bg-muted')}>
+   699→                      <Icon className='size-3.5' />{item.label}
+   700→                      {item.key === 'orders' && activeOrders > 0 && <span className='flex size-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white'>{activeOrders}</span>}
+   701→                    </button>);
+   702→                })}
+   703→              </div>
+   704→            </div>
+   705→
+   706→            {/* Section content */}
+   707→            <AnimatePresence mode='wait'>
+   708→              <motion.div key={section} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+   709→                {section === 'overview' && <OverviewSection business={business} analytics={analytics} />}
+   710→                {section === 'orders' && <OrdersSection orders={orders || []} />}
+   711→                {section === 'menu' && <MenuSection categories={categories} />}
+   712→                {section === 'qr' && <QrSection tables={tables} />}
+   713→                {section === 'revenue' && <RevenueSection />}
+   714→              </motion.div>
+   715→            </AnimatePresence>
+   716→          </div>
+   717→        </main>
+   718→      </div>
+   719→
+   720→      {/* Footer */}
+   721→      <footer className='border-t bg-background/95 px-4 py-2 text-[11px] text-muted-foreground'>
+   722→        <div className='mx-auto max-w-6xl flex items-center justify-between gap-2'>
+   723→          <span className='flex items-center gap-1.5'><UtensilsCrossed className='size-3.5' />QuickOrder · Owner Dashboard</span>
+   724→          <span className='flex items-center gap-1.5'><ShoppingBag className='size-3.5' /><span className='tabular-nums'>{orders?.length || 0}</span> orders</span>
+   725→        </div>
+   726→      </footer>
+   727→    </div>
+   728→  );
+   729→}
+   730→

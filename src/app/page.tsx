@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts';
 import {
   ArrowDown, ArrowUp, BarChart3, Calendar, ChevronDown, ChevronRight,
-  Clock, DollarSign, LayoutDashboard, ListOrdered, Menu as MenuIcon,
+  Clock, DollarSign, LayoutDashboard, ListOrdered, LogOut, Menu as MenuIcon,
   Package, QrCode, RefreshCw, Search, ShoppingBag, TrendingUp, UtensilsCrossed, X,
 } from 'lucide-react';
 
@@ -24,6 +24,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { signOut } from 'next-auth/react';
 
 // ─── Types ────────────────────────────────────────────────────────────
 type Section = 'overview' | 'orders' | 'menu' | 'qr' | 'revenue';
@@ -622,6 +623,9 @@ export default function Home() {
         ) : <Skeleton className='size-9 rounded-xl' />}
         <div className='flex items-center gap-2'>
           {activeOrders > 0 && <Badge className='bg-emerald-100 text-emerald-700 tabular-nums hidden sm:flex'>{activeOrders} active</Badge>}
+          <Button variant='ghost' size='sm' className='h-8 gap-1.5 text-muted-foreground hover:text-red-600' onClick={() => signOut({ callbackUrl: '/' })}>
+            <LogOut className='size-4' /><span className='hidden sm:inline text-xs'>Logout</span>
+          </Button>
         </div>
       </header>
 
@@ -640,6 +644,13 @@ export default function Home() {
                 {item.key === 'orders' && activeOrders > 0 && <span className='ml-auto flex size-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white'>{activeOrders}</span>}
               </button>);
           })}
+          <div className='mt-auto pt-4'>
+            <Separator className='mb-2' />
+            <button onClick={() => signOut({ callbackUrl: '/' })}
+              className='flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600'>
+              <LogOut className='size-4' />Logout
+            </button>
+          </div>
         </aside>
 
         {/* Mobile drawer */}
@@ -663,6 +674,11 @@ export default function Home() {
                       {item.key === 'orders' && activeOrders > 0 && <span className='ml-auto flex size-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white'>{activeOrders}</span>}
                     </button>);
                 })}
+                <Separator className='my-2' />
+                <button onClick={() => signOut({ callbackUrl: '/' })}
+                  className='flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50'>
+                  <LogOut className='size-5' />Logout
+                </button>
               </nav>
             </motion.div>
           </>}

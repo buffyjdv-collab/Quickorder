@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import type { Analytics } from "@/lib/types";
+import { requireAuth } from "@/lib/get-session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const businessId = "biz_teahub";
+    const { businessId } = await requireAuth();
     const orders = await db.order.findMany({ where: { businessId }, include: { items: true } });
     const tables = await db.table.findMany({ where: { businessId } });
     const products = await db.product.findMany({ where: { businessId } });
@@ -59,6 +60,7 @@ export async function GET() {
     };
     return NextResponse.json(analytics);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    const status = e.message === "Unauthorized" || e.message === "No business assigned" ? 401 : 500;
+    return NextResponse.json({ error: e.message }, { status });
   }
 }

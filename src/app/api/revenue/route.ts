@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import type { RevenueDetail } from "@/lib/types";
+import { requireAuth } from "@/lib/get-session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const businessId = "biz_teahub";
+    const { businessId } = await requireAuth();
     const { searchParams } = new URL(req.url);
     const period = searchParams.get("period") || "month";
     const date = searchParams.get("date") || new Date().toISOString();
@@ -127,6 +128,7 @@ export async function GET(req: NextRequest) {
     };
     return NextResponse.json(result);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    const status = e.message === "Unauthorized" || e.message === "No business assigned" ? 401 : 500;
+    return NextResponse.json({ error: e.message }, { status });
   }
 }

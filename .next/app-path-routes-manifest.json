@@ -1,0 +1,15 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/analytics/route": "/api/analytics",
+  "/api/auth/[...nextauth]/route": "/api/auth/[...nextauth]",
+  "/api/business/route": "/api/business",
+  "/api/categories/route": "/api/categories",
+  "/api/orders/[id]/route": "/api/orders/[id]",
+  "/api/orders/route": "/api/orders",
+  "/api/revenue/route": "/api/revenue",
+  "/api/route": "/api",
+  "/api/setup/route": "/api/setup",
+  "/api/tables/route": "/api/tables",
+  "/page": "/"
+}

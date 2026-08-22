@@ -1,0 +1,8 @@
+var R=require("../../../chunks/[turbopack]_runtime.js")("server/app/api/revenue/route.js")
+R.c("server/chunks/[root-of-the-server]__11wj6lu._.js")
+R.c("server/chunks/_0fxrolh._.js")
+R.c("server/chunks/[root-of-the-server]__00_hq9v._.js")
+R.c("server/chunks/node_modules_next_1zdbrne._.js")
+R.c("server/chunks/_next-internal_server_app_api_revenue_route_actions_13b1j75.js")
+R.m(76215)
+module.exports=R.m(76215).exports

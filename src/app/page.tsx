@@ -641,22 +641,9 @@ function LoginScreen() {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────
-export default function Home() {
-  const { data: session, status } = useSession();
+function Dashboard() {
   const [section, setSection] = React.useState<Section>('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
-
-  if (status === 'loading') return (
-    <div className='min-h-screen flex items-center justify-center bg-muted/30'>
-      <div className='text-center space-y-3'>
-        <div className='mx-auto size-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600' />
-        <p className='text-sm text-muted-foreground'>Loading...</p>
-      </div>
-    </div>
-  );
-
-  if (!session) return <LoginScreen />;
 
   const { data: business } = useFetch<Business>('/api/business');
   const { data: orders } = useFetch<Order[]>('/api/orders?limit=200', { interval: 15000 });
@@ -788,4 +775,22 @@ export default function Home() {
       </footer>
     </div>
   );
+}
+
+// ─── Main Page (auth gate) ────────────────────────────────────────
+export default function Home() {
+  const { data: session, status } = useSession();
+
+  if (status === 'loading') return (
+    <div className='min-h-screen flex items-center justify-center bg-muted/30'>
+      <div className='text-center space-y-3'>
+        <div className='mx-auto size-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600' />
+        <p className='text-sm text-muted-foreground'>Loading...</p>
+      </div>
+    </div>
+  );
+
+  if (!session) return <LoginScreen />;
+
+  return <Dashboard />;
 }

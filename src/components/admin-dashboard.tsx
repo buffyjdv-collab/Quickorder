@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Area, AreaChart, Bar, BarChart, Cell, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts';
 import {
   ArrowDown, ArrowUp, BarChart3, Building2, Calendar, Check, ChevronDown, CreditCard,
   DollarSign, Eye, LogOut, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Shield,
